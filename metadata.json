@@ -1,0 +1,6 @@
+{
+  "name": "AIOS",
+  "description": "Autonomous Intelligence Operating System – Enterprise platform to orchestrate, secure, deploy, and monitor autonomous AI agents and edge devices.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

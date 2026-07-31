@@ -1,0 +1,598 @@
+// ============================================================
+// AIOS — Prisma Schema (PostgreSQL)
+// Autonomous Intelligence Operating System
+// ============================================================
+
+generator client {
+  provider             = "prisma-client-py"
+  interface            = "asyncio"
+  recursive_type_depth = 5
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("PRISMA_DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum UserRole {
+  SUPER_ADMIN    @map("Super Admin")
+  ORG_ADMIN      @map("Organization Admin")
+  DEVELOPER      @map("Developer")
+  OPERATOR       @map("Operator")
+  VIEWER         @map("Viewer")
+  GUEST          @map("Guest")
+}
+
+enum EventSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum EventStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum AgentType {
+  EMERGENCY
+  INFRASTRUCTURE
+  SURVEILLANCE
+  COMMUNICATION
+  INTELLIGENCE
+  LOGISTICS
+}
+
+enum MappingStatus {
+  STANDBY
+  PREPARING
+  ACTIVE
+  COMPLETED
+}
+
+enum MissionStatus {
+  PENDING
+  ACTIVE
+  COMPLETED
+  FAILED
+  ABORTED
+}
+
+enum WorkflowStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum MessageType {
+  BROADCAST
+  DIRECT
+  TASK_SHARING
+  KNOWLEDGE_SHARING
+  HEARTBEAT
+  ALERT
+}
+
+enum NotificationType {
+  INFO
+  WARNING
+  CRITICAL
+  SYSTEM
+  SECURITY
+  MISSION
+}
+
+// ============================================================
+// TABLE 1: Users
+// Stores application users with full profile data
+// ============================================================
+
+model User {
+  user_id       String    @id @default(uuid()) @db.Uuid
+  full_name     String?   @db.VarChar(255)
+  email         String    @unique @db.VarChar(255)
+  phone_number  String?   @db.VarChar(50)
+  password_hash String    @db.Text
+  role          UserRole  @default(VIEWER)
+  organization  String?   @db.VarChar(255)
+  profile_image String?   @db.Text
+  language      String?   @default("en") @db.VarChar(10)
+  is_active     Boolean   @default(true)
+  created_at    DateTime  @default(now()) @db.Timestamptz
+  updated_at    DateTime  @updatedAt @db.Timestamptz
+
+  // Relations
+  events        Event[]
+  notifications Notification[]
+
+  @@index([email])
+  @@index([role])
+  @@index([is_active])
+  @@map("aios_users")
+}
+
+// ============================================================
+// TABLE 2: Events
+// Stores every problem / incident reported to AIOS
+// ============================================================
+
+model Event {
+  event_id          String        @id @default(uuid()) @db.Uuid
+  event_title       String        @db.VarChar(500)
+  event_description String        @db.Text
+  detected_category String        @db.VarChar(100)
+  severity          EventSeverity @default(MEDIUM)
+  status            EventStatus   @default(OPEN)
+  latitude          Float?
+  longitude         Float?
+  address           String?       @db.VarChar(500)
+  city              String?       @db.VarChar(100)
+  state             String?       @db.VarChar(100)
+  country           String?       @default("India") @db.VarChar(100)
+  reported_by       String?       @db.Uuid
+  detected_source   String?       @default("Manual Report") @db.VarChar(100)
+  confidence_score  Float?        @default(0.95)
+  created_at        DateTime      @default(now()) @db.Timestamptz
+  updated_at        DateTime      @updatedAt @db.Timestamptz
+
+  // Relations
+  reporter          User?                @relation(fields: [reported_by], references: [user_id], onDelete: SetNull)
+  ai_analysis       AiAnalysis[]
+  missions          Mission[]
+  agent_mappings    EventAgentMapping[]
+  mission_logs      MissionLog[]
+
+  @@index([detected_category])
+  @@index([severity])
+  @@index([status])
+  @@index([reported_by])
+  @@index([created_at])
+  @@index([city])
+  @@index([country])
+  @@map("aios_events")
+}
+
+// ============================================================
+// TABLE 3: AI_Analysis
+// Stores AIOS understanding, reasoning and assessment
+// ============================================================
+
+model AiAnalysis {
+  analysis_id       String   @id @default(uuid()) @db.Uuid
+  event_id          String   @db.Uuid
+  detected_problem  String   @db.Text
+  reasoning         String   @db.Text
+  severity_score    Float    @default(0.0)
+  estimated_people  Int?     @default(0)
+  estimated_damage  String?  @db.VarChar(255)
+  ai_summary        String   @db.Text
+  confidence        Float    @default(0.9)
+  analyzed_at       DateTime @default(now()) @db.Timestamptz
+
+  // Explainable AI metrics
+  why_category_selected       String?   @db.Text
+  why_severity_selected       String?   @db.Text
+  why_priority_selected       String?   @db.Text
+  why_agents_selected         String?   @db.Text
+  why_other_agents_rejected    String?   @db.Text
+  why_workflow_selected       String?   @db.Text
+  alternative_workflow        String?   @db.Text
+  confidence_level            String?   @db.VarChar(50)
+  supporting_evidence         String?   @db.Text
+  estimated_resources         String?   @db.Text
+  estimated_duration          Int?
+  ai_version                  String?   @default("v1.0.0") @db.VarChar(50)
+
+  // Relations
+  event             Event    @relation(fields: [event_id], references: [event_id], onDelete: Cascade)
+
+  @@index([event_id])
+  @@index([analyzed_at])
+  @@map("aios_ai_analysis")
+}
+
+// ============================================================
+// TABLE 4: Agents
+// Stores all AIOS specialized emergency response agents
+// ============================================================
+
+model Agent {
+  agent_id      String    @id @default(uuid()) @db.Uuid
+  agent_name    String    @unique @db.VarChar(255)
+  agent_type    AgentType @default(EMERGENCY)
+  description   String?   @db.Text
+  organization  String?   @db.VarChar(255)
+  icon          String?   @db.VarChar(50)
+  color         String?   @default("#6366f1") @db.VarChar(20)
+  is_enabled    Boolean   @default(true)
+  created_at    DateTime  @default(now()) @db.Timestamptz
+
+  // Relations
+  event_mappings    EventAgentMapping[]
+  sent_messages     AgentMessage[]      @relation("SenderAgent")
+  received_messages AgentMessage[]      @relation("ReceiverAgent")
+
+  @@index([agent_name])
+  @@index([agent_type])
+  @@index([is_enabled])
+  @@map("aios_agents")
+}
+
+// ============================================================
+// TABLE 5: Event_Agent_Mapping
+// Determines which agents are activated for each event
+// ============================================================
+
+model EventAgentMapping {
+  mapping_id      String        @id @default(uuid()) @db.Uuid
+  event_id        String        @db.Uuid
+  agent_id        String        @db.Uuid
+  status          MappingStatus @default(STANDBY)
+  activation_time DateTime?     @db.Timestamptz
+  completion_time DateTime?     @db.Timestamptz
+  current_task    String?       @db.Text
+
+  // Relations
+  event           Event         @relation(fields: [event_id], references: [event_id], onDelete: Cascade)
+  agent           Agent         @relation(fields: [agent_id], references: [agent_id], onDelete: Cascade)
+
+  @@unique([event_id, agent_id])
+  @@index([event_id])
+  @@index([agent_id])
+  @@index([status])
+  @@map("aios_event_agent_mappings")
+}
+
+// ============================================================
+// TABLE 6: Missions
+// Each detected event becomes exactly one mission
+// ============================================================
+
+model Mission {
+  mission_id            String        @id @default(uuid()) @db.Uuid
+  event_id              String        @db.Uuid
+  mission_name          String        @db.VarChar(500)
+  mission_status        MissionStatus @default(PENDING)
+  start_time            DateTime?     @db.Timestamptz
+  end_time              DateTime?     @db.Timestamptz
+  duration              Int?          // Duration in seconds
+  completion_percentage Float         @default(0.0)
+  ai_summary            String?       @db.Text
+
+  // Versioning columns
+  version               Int           @default(1)
+  parent_mission_id     String?       @db.Uuid
+  change_reason         String?       @db.Text
+
+  // Relations
+  event                 Event            @relation(fields: [event_id], references: [event_id], onDelete: Cascade)
+  workflow_steps        WorkflowStep[]
+  agent_messages        AgentMessage[]
+  mission_logs          MissionLog[]
+  mission_history       MissionHistory[]
+  timeline_entries      MissionTimeline[]
+  reports               MissionReport[]
+
+  @@index([event_id])
+  @@index([mission_status])
+  @@index([start_time])
+  @@map("aios_missions")
+}
+
+// ============================================================
+// TABLE 7: Workflow_Steps
+// Stores every workflow step of every mission (5 standard steps)
+// ============================================================
+
+model WorkflowStep {
+  workflow_id  String         @id @default(uuid()) @db.Uuid
+  mission_id   String         @db.Uuid
+  step_number  Int
+  step_name    String         @db.VarChar(255)
+  description  String?        @db.Text
+  status       WorkflowStatus @default(PENDING)
+  started_at   DateTime?      @db.Timestamptz
+  completed_at DateTime?      @db.Timestamptz
+
+  // Relations
+  mission      Mission        @relation(fields: [mission_id], references: [mission_id], onDelete: Cascade)
+
+  @@index([mission_id])
+  @@index([status])
+  @@index([step_number])
+  @@map("aios_workflow_steps")
+}
+
+// ============================================================
+// TABLE 8: Agent_Messages
+// Stores communication between active agents during a mission
+// ============================================================
+
+model AgentMessage {
+  message_id     String      @id @default(uuid()) @db.Uuid
+  mission_id     String      @db.Uuid
+  sender_agent   String      @db.Uuid
+  receiver_agent String?     @db.Uuid
+  message        String      @db.Text
+  message_type   MessageType @default(BROADCAST)
+  sent_at        DateTime    @default(now()) @db.Timestamptz
+
+  // Relations
+  mission        Mission     @relation(fields: [mission_id], references: [mission_id], onDelete: Cascade)
+  sender         Agent       @relation("SenderAgent", fields: [sender_agent], references: [agent_id], onDelete: Cascade)
+  receiver       Agent?      @relation("ReceiverAgent", fields: [receiver_agent], references: [agent_id], onDelete: SetNull)
+
+  @@index([mission_id])
+  @@index([sender_agent])
+  @@index([receiver_agent])
+  @@index([sent_at])
+  @@map("aios_agent_messages")
+}
+
+// ============================================================
+// TABLE 9: Mission_Logs
+// Complete audit logs for every mission activity
+// ============================================================
+
+model MissionLog {
+  log_id        String   @id @default(uuid()) @db.Uuid
+  mission_id    String   @db.Uuid
+  event_id      String   @db.Uuid
+  activity      String   @db.Text
+  activity_time DateTime @default(now()) @db.Timestamptz
+  performed_by  String?  @db.VarChar(255)
+
+  // Relations
+  mission       Mission  @relation(fields: [mission_id], references: [mission_id], onDelete: Cascade)
+  event         Event    @relation(fields: [event_id], references: [event_id], onDelete: Cascade)
+
+  @@index([mission_id])
+  @@index([event_id])
+  @@index([activity_time])
+  @@map("aios_mission_logs")
+}
+
+// ============================================================
+// TABLE 10: Notifications
+// Stores AIOS system and mission notifications per user
+// ============================================================
+
+model Notification {
+  notification_id   String           @id @default(uuid()) @db.Uuid
+  user_id           String?          @db.Uuid
+  title             String           @db.VarChar(500)
+  message           String           @db.Text
+  notification_type NotificationType @default(INFO)
+  is_read           Boolean          @default(false)
+  created_at        DateTime         @default(now()) @db.Timestamptz
+
+  // Relations
+  user              User?            @relation(fields: [user_id], references: [user_id], onDelete: SetNull)
+
+  @@index([user_id])
+  @@index([is_read])
+  @@index([notification_type])
+  @@index([created_at])
+  @@map("aios_notifications")
+}
+
+// ============================================================
+// TABLE 11: Mission_History
+// Stores completed mission records for analytics
+// ============================================================
+
+model MissionHistory {
+  history_id    String   @id @default(uuid()) @db.Uuid
+  mission_id    String   @db.Uuid
+  event_name    String   @db.VarChar(500)
+  final_status  String   @db.VarChar(50)
+  duration      Int?     // Duration in seconds
+  total_agents  Int      @default(0)
+  location      String?  @db.VarChar(500)
+  completed_at  DateTime @default(now()) @db.Timestamptz
+
+  // Relations
+  mission       Mission  @relation(fields: [mission_id], references: [mission_id], onDelete: Cascade)
+
+  @@index([mission_id])
+  @@index([final_status])
+  @@index([completed_at])
+  @@map("aios_mission_history")
+}
+
+// ============================================================
+// TABLE 12: System_Settings
+// Application-wide configuration key-value store
+// ============================================================
+
+model SystemSetting {
+  setting_id    String   @id @default(uuid()) @db.Uuid
+  setting_name  String   @unique @db.VarChar(255)
+  setting_value String   @db.Text
+  description   String?  @db.Text
+  updated_at    DateTime @updatedAt @db.Timestamptz
+
+  @@index([setting_name])
+  @@map("aios_system_settings")
+}
+
+model MissionTimeline {
+  timeline_id     String   @id @default(uuid()) @db.Uuid
+  mission_id      String   @db.Uuid
+  timestamp       DateTime @default(now()) @db.Timestamptz
+  action          String   @db.Text
+  agent_name      String?  @db.VarChar(255)
+  status          String   @db.VarChar(100)
+  details         String?  @db.Text
+
+  // Relations
+  mission         Mission  @relation(fields: [mission_id], references: [mission_id], onDelete: Cascade)
+
+  @@index([mission_id])
+  @@index([timestamp])
+  @@map("aios_mission_timeline")
+}
+
+model AgentCapability {
+  capability_id   String   @id @default(uuid()) @db.Uuid
+  agent_id        String   @db.Uuid
+  capability_name String   @db.VarChar(255)
+  description     String?  @db.Text
+
+  @@index([agent_id])
+  @@map("aios_agent_capabilities")
+}
+
+model WorkflowTemplate {
+  template_id     String   @id @default(uuid()) @db.Uuid
+  template_name   String   @db.VarChar(255)
+  category        String   @db.VarChar(100)
+  steps_json      String   @db.Text
+  created_at      DateTime @default(now()) @db.Timestamptz
+
+  @@map("aios_workflow_templates")
+}
+
+model MissionWorkflow {
+  id              String   @id @default(uuid()) @db.Uuid
+  mission_id      String   @db.Uuid
+  step_id         String   @db.Uuid
+  status          String   @db.VarChar(100)
+  updated_at      DateTime @updatedAt @db.Timestamptz
+
+  @@index([mission_id])
+  @@map("aios_mission_workflow")
+}
+
+model MissionReport {
+  report_id       String   @id @default(uuid()) @db.Uuid
+  mission_id      String   @db.Uuid
+  report_title    String   @db.VarChar(500)
+  report_content  String   @db.Text
+  created_at      DateTime @default(now()) @db.Timestamptz
+
+  // Relations
+  mission         Mission  @relation(fields: [mission_id], references: [mission_id], onDelete: Cascade)
+
+  @@index([mission_id])
+  @@map("aios_mission_reports")
+}
+
+model AuditLogPg {
+  id              String   @id @default(uuid()) @db.Uuid
+  user            String   @db.VarChar(255)
+  timestamp       DateTime @default(now()) @db.Timestamptz
+  module          String   @db.VarChar(255)
+  action          String   @db.VarChar(255)
+  old_value       String?  @db.Text
+  new_value       String?  @db.Text
+  ip_address      String?  @db.VarChar(50)
+  device_info     String?  @db.Text
+  mission_id      String?  @db.Uuid
+  event_id        String?  @db.Uuid
+
+  @@index([timestamp])
+  @@index([user])
+  @@map("aios_audit_logs_pg")
+}
+
+model Resource {
+  resource_id     String   @id @default(uuid()) @db.Uuid
+  name            String   @unique @db.VarChar(255)
+  category        String   @db.VarChar(100)
+  total_count     Int      @default(10)
+  available_count Int      @default(10)
+
+  @@map("aios_resources")
+}
+
+model MissionResource {
+  id                String   @id @default(uuid()) @db.Uuid
+  mission_id        String   @db.Uuid
+  resource_id       String   @db.Uuid
+  predicted_count   Int
+  allocated_count   Int
+  actual_used_count Int      @default(0)
+  accuracy_score    Float?
+
+  @@index([mission_id])
+  @@map("aios_mission_resources")
+}
+
+model Sensor {
+  sensor_id       String   @id @default(uuid()) @db.Uuid
+  name            String   @db.VarChar(255)
+  type            String   @db.VarChar(100)
+  status          String   @db.VarChar(50)
+  location        String?  @db.VarChar(255)
+
+  @@map("aios_sensors")
+}
+
+model SensorReading {
+  reading_id      String   @id @default(uuid()) @db.Uuid
+  sensor_id       String   @db.Uuid
+  reading_value   Float
+  unit            String   @db.VarChar(50)
+  timestamp       DateTime @default(now()) @db.Timestamptz
+
+  @@index([sensor_id])
+  @@map("aios_sensor_readings")
+}
+
+model AiModel {
+  model_id        String   @id @default(uuid()) @db.Uuid
+  name            String   @db.VarChar(255)
+  version         String   @db.VarChar(50)
+  accuracy        Float?
+  status          String   @db.VarChar(50)
+
+  @@map("aios_ai_models")
+}
+
+model AiLearning {
+  learning_id     String   @id @default(uuid()) @db.Uuid
+  mission_id      String   @db.Uuid
+  feedback        String   @db.Text
+  rating          Int      @default(5)
+  timestamp       DateTime @default(now()) @db.Timestamptz
+
+  @@map("aios_ai_learning")
+}
+
+model Location {
+  location_id     String   @id @default(uuid()) @db.Uuid
+  name            String   @db.VarChar(255)
+  latitude        Float
+  longitude       Float
+
+  @@map("aios_locations")
+}
+
+model EmergencyContact {
+  contact_id      String   @id @default(uuid()) @db.Uuid
+  name            String   @db.VarChar(255)
+  phone           String   @db.VarChar(50)
+  department      String   @db.VarChar(100)
+
+  @@map("aios_emergency_contacts")
+}
+
+model EventAttachment {
+  attachment_id   String   @id @default(uuid()) @db.Uuid
+  event_id        String   @db.Uuid
+  file_name       String   @db.VarChar(255)
+  file_url        String   @db.Text
+  uploaded_at     DateTime @default(now()) @db.Timestamptz
+
+  @@index([event_id])
+  @@map("aios_event_attachments")
+}

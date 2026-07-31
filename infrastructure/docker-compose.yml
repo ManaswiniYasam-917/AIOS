@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ../
+      dockerfile: infrastructure/Dockerfile.backend
+    ports:
+      - "8000:8000"
+      - "50051:50051"
+    environment:
+      - DATABASE_URL=postgresql://aios_admin:secure_aios_db_pass@postgres:5432/aios_db
+      - PRISMA_DATABASE_URL=postgresql://aios_admin:secure_aios_db_pass@postgres:5432/aios_db
+      - REDIS_URL=redis://redis:6379/0
+      - QDRANT_URL=http://qdrant:6333
+      - MQTT_BROKER=mosquitto
+      - MQTT_PORT=1883
+      - ENV=production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      - redis
+      - qdrant
+      - mosquitto
+    restart: always
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ../:/app
+    ports:
+      - "3000:3000"
+    command: sh -c "npm install && npm run dev"
+    environment:
+      - DISABLE_HMR=false
+    depends_on:
+      - backend
+    restart: always
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=aios_admin
+      - POSTGRES_PASSWORD=secure_aios_db_pass
+      - POSTGRES_DB=aios_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aios_admin -d aios_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: always
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: always
+
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - mosquitto_data:/mosquitto/data
+    restart: always
+
+volumes:
+  postgres_data:
+  qdrant_data:
+  mosquitto_data:
